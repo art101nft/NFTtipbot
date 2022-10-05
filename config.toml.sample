@@ -1,0 +1,53 @@
+[mysql]
+host = "localhost"
+port = 3306
+user = "username"
+password = "pass"
+db = "pass"
+
+[discord]
+owner_ids = [....]
+token = "discord bot token here..."
+verify_link = "https://verify.art101.io/nftip_sign/"
+invite_link = "https://verify.art101.io/invite_nftip" # redirect
+verify_bind_port = 9999 # port to bind for pushing notification when address is verified
+admin = [...., ....]
+log_channel = .... # channel ID for logging various things
+log_channel_backup = ... # In case above channel isn't found
+
+[wallet]
+eth_address = "0x..." # to use all Ethereum, BSC, etc
+eth_key = "key here...."
+max_verified_per_user = 2 # maximum address per user
+enable_withdraw = 1 # 0 to disable
+enable_gas_tip = 1
+
+[max_gas_tip]
+eth = 0.01
+matic = 0.5
+
+[endpoint]
+ethereum = "...."
+polygon = "...."
+
+[etherscan]
+api_key = "..." # for gas tracker
+gas_fetch_timeout = 30.0
+
+[api]
+alchemy = "...."
+moralis = "......"
+moralis_tx_api_url = "https://deep-index.moralis.io/api/v2/"
+moralis_nft_tx_api_url = "https://deep-index.moralis.io/api/v2/"
+
+[gas_decimal]
+ethereum = 18
+polygon = 18
+
+[other]
+supported_network = ["ETHEREUM", "MATIC"]
+github_link = "https://github.com/art101nft/NFTtipbot"
+
+['rarity']
+enable = 1
+enable_meta_gen = 0 # allow rarity generation by admin
