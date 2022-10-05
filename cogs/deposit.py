@@ -4,6 +4,7 @@ import time
 import traceback
 from datetime import datetime
 from typing import List
+from cachetools import TTLCache
 
 import discord
 from discord import app_commands
@@ -19,6 +20,8 @@ class Deposit(commands.Cog):
     def __init__(self, bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
         self.utils = Utils(self.bot)
+        # cache withdraw of a coin to avoid fast withdraw
+        self.withdraw_tx = TTLCache(maxsize=2048, ttl=60.0) # key = user_id + user_server => time
 
     @app_commands.command(
         name="nftransfer",
@@ -161,6 +164,18 @@ class Deposit(commands.Cog):
                         await interaction.edit_original_response(
                             content=f"{interaction.user.mention}, internal error with network.")
                         return
+
+                    try:
+                        key_withdraw = str(interaction.user.id) + "_" + self.bot.server_bot
+                        if key_withdraw in self.withdraw_tx:
+                            await interaction.edit_original_response(
+                                content=f"{interaction.user.mention}, you recently executed a withdraw. Please try again in a few seconds.")
+                            return
+                        else:
+                            self.withdraw_tx[key_withdraw] = int(time.time())
+                    except Exception:
+                        pass
+
                     # withdraw
                     withdraw_tx = None
                     if contract_type == "ERC721":
