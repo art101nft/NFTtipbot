@@ -46,6 +46,7 @@ polygon = 18
 
 [other]
 supported_network = ["ETHEREUM", "MATIC"]
+github_link = "https://github.com/art101nft/NFTtipbot"
 
 ['rarity']
 enable = 1

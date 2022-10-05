@@ -63,6 +63,7 @@ class About(commands.Cog):
                                      inline=False)
         except Exception:
             traceback.print_exc(file=sys.stdout)
+        botdetails.add_field(name="Github", value=self.bot.config['other']['github_link'])
         botdetails.set_footer(text=f'Made in Python | requested by {requested_by}',
                               icon_url='http://findicons.com/files/icons/2804/plex/512/python.png')
         botdetails.set_author(name=self.bot.user.name, icon_url=self.bot.user.display_avatar)
