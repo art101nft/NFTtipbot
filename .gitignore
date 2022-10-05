@@ -130,7 +130,10 @@ dmypy.json
 
 # IDEA
 .idea/
+
+
+# VSCode
+.vscode/
+
 config.yml
-
-
 config.toml
