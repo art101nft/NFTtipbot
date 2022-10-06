@@ -11,6 +11,7 @@
 <ul>
     <li><a href="#overview">Overview</a></li>
     <li><a href="#built-with">Built with</a></li>
+    <li><a href="#commands">Commands</a></li>
     <li><a href="#contributing">Contributing</a></li>
     <li><a href="#thanks-to">Thanks to</a></li>
 </ul>
@@ -29,6 +30,10 @@ If you want to list your NFT (on Ethereum or Polygon) in this Tip Bot, please op
 - [web3py](https://github.com/ethereum/web3.py)
 - [MariaDB](https://mariadb.com/)
 - [php](https://www.php.net/)
+
+## Commands
+
+https://user-images.githubusercontent.com/40448869/194192192-dbc59e46-144f-4c85-afd7-4998f06482df.mp4
 
 ## Contributing
 
