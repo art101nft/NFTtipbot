@@ -1417,6 +1417,129 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
     # End of store messge
 
+    # NFT Contract transfer
+    async def get_nft_contract_transfer_tracking(self):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT *
+                    FROM `nft_cont_tracking` WHERE `is_enable`=1
+                    """
+                    await cur.execute(sql)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def get_nft_each_contract_transfers(self, contract: str, network: str):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT *
+                    FROM `nft_cont_transfers` 
+                    WHERE `token_address`=%s AND `network`=%s
+                    """
+                    await cur.execute(sql, (contract, network))
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def insert_nft_contract_transfers(self, data_rows):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ INSERT INTO nft_cont_transfers (`network`, `block_number`, `block_timestamp`,
+                    `block_time`, `block_hash`, `transaction_hash`, `transaction_index`, `log_index`, `value`,
+                    `contract_type`, `transaction_type`, `token_address`, `token_id_int`, `token_id_hex`, 
+                    `from_address`, `to_address`, `amount`, `verified`) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    await cur.executemany(sql, data_rows)
+                    return cur.rowcount
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+    # End of NFT Contract transfer
+
+    # NFT Meta fetch
+    async def get_nft_contract_meta_tracking(self):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT *
+                    FROM `nft_cont_tracking` 
+                    WHERE `is_enable`=1 AND `need_update_meta`=1
+                    """
+                    await cur.execute(sql)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def get_nft_contract_transferred_token_ids(self, contract: str):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT DISTINCT(`token_id_hex`), `token_id_int`, `network`, `token_address` AS `contract`
+                    FROM `nft_cont_transfers`
+                    WHERE `token_address`=%s
+                    ORDER BY `token_id_int` ASC
+                    """
+                    await cur.execute(sql, contract)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def get_nft_contract_meta_list(self, nft_cont_tracking_id: int):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT * FROM `nft_cont_meta`
+                    WHERE `nft_cont_tracking_id`=%s
+                    ORDER BY `token_id_int` ASC
+                    """
+                    await cur.execute(sql, nft_cont_tracking_id)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def insert_nft_contract_meta(self, data_rows):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ INSERT INTO `nft_cont_meta` (`nft_cont_tracking_id`, `token_id_int`, `token_id_hex`,
+                    `token_uri`, `metadata`, `last_token_uri_sync`, `last_token_uri_sync_time`, 
+                    `last_metadata_sync`, `last_metadata_sync_time`) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """
+                    await cur.executemany(sql, data_rows)
+                    return cur.rowcount
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+
+    # End of NFT Meta fetch
+
     @commands.Cog.listener()
     async def on_ready(self):
         if not self.pull_eth_gas_price.is_running():
