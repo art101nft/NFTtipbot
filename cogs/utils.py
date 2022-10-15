@@ -1538,6 +1538,116 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return 0
 
+    async def get_nft_contract_unsync_meta_list(self):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT `nft_cont_tracking`.*, `nft_cont_meta`.*
+                    FROM `nft_cont_meta`
+                        INNER JOIN `nft_cont_tracking` ON `nft_cont_tracking`.`nft_cont_tracking`=`nft_cont_meta`.`nft_cont_tracking_id`
+                    WHERE `nft_cont_tracking`.`is_enable`=1 AND `nft_cont_tracking`.`need_update_meta`=1
+                        AND (`nft_cont_meta`.`last_token_uri_sync` IS NULL OR `nft_cont_meta`.`last_metadata_sync` IS NULL
+                            OR `nft_cont_meta`.`token_uri` IS NULL)
+                    """
+                    await cur.execute(sql)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def update_nft_tracking_meta_called_update(
+        self, nft_cont_meta_id: int
+    ):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ UPDATE INTO `nft_cont_meta`
+                    SET `pushing_updated`=%s 
+                    WHERE `nft_cont_meta_id`=%s AND `metadata` IS NULL AND `token_uri` IS NULL
+                    LIMIT 1
+                    """
+                    await cur.executemany(sql, (int(time.time()), nft_cont_meta_id))
+                    return cur.rowcount
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+
+    async def update_nft_tracking_meta(
+        self, data_rows
+    ):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ UPDATE `nft_cont_meta`
+                    SET `metadata`=%s, `token_uri`=%s, `last_token_uri_sync`=%s,
+                    `last_token_uri_sync_time`=%s, `last_metadata_sync`=%s,
+                    `last_metadata_sync_time`=%s 
+                    WHERE `nft_cont_meta_id`=%s
+                    """
+                    await cur.executemany(sql, data_rows)
+                    return cur.rowcount
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+
+    async def update_nft_tracking_meta_image(
+        self, mimetype: str, stored_as: str, image_ipfs: str
+    ):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ UPDATE `nft_cont_meta`
+                    SET `mimetype`=%s, `local_stored_as`=%s
+                    WHERE `image`=%s
+                    """
+                    await cur.execute(sql, (mimetype, stored_as, image_ipfs))
+                    return cur.rowcount
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+
+    async def get_nft_tracking_ipfs_image_list(self):
+        # This will get in format Example
+        # ipfs://Qme7dwrG4xst5imgjDJhkXxdyZxya3q5aRi2inFQUzfeRE for `image`
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT `nft_cont_meta_id`, `token_id_int`, `token_id_hex`, 
+                    JSON_UNQUOTE(JSON_EXTRACT(TRIM(TRAILING '"' FROM REPLACE(TRIM(LEADING '"' FROM `metadata`), '\\"', '"')), "$.image")) AS `image`
+                    FROM `nft_cont_meta`
+                    WHERE `nft_cont_meta`.`metadata` IS NOT NULL
+                    """
+                    await cur.execute(sql)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def get_nft_contract_meta_list_no_image(self):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT DISTINCT(`image`) FROM `nft_cont_meta`
+                    WHERE `image` IS NOT NULL AND `local_stored_as` IS NULL
+                    """
+                    await cur.execute(sql)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
     # End of NFT Meta fetch
 
     @commands.Cog.listener()
