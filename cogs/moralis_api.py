@@ -434,14 +434,14 @@ class MoralisAPI(commands.Cog):
                                             remaining_token_ids -= 1
                                         else:
                                             failed_fetch_transfer += 1
-                                            if failed_fetch_transfer > 0 and failed_fetch_transfer % 10 == 0:
+                                            if failed_fetch_transfer > 0 and failed_fetch_transfer % 5 == 0:
                                                 print("Fetch Meta Chain: {} Contract {} failed {} times".format(
                                                     chain, each['contract'], failed_fetch_transfer)
                                                 )
                                             await asyncio.sleep(30.0)
                                 except Exception as e:
                                     traceback.print_exc(file=sys.stdout)
-                                if len(data_rows) > 0 and len(data_rows) % 10 == 0:
+                                if len(data_rows) > 0 and len(data_rows) % 5 == 0:
                                     print("Fetch Meta Chain: {} Contract {} fetched {}. Still have {} more to update".format(
                                         chain, each['contract'], len(data_rows), remaining_token_ids)
                                     )
@@ -696,7 +696,7 @@ class MoralisAPI(commands.Cog):
                                         ))
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
-                if len(meta_updates) > 0 and len(meta_updates) % 10 == 0:
+                if len(meta_updates) > 0 and len(meta_updates) % 5 == 0:
                     updating = await self.utils.update_nft_tracking_meta(meta_updates)
                     print("Updated meta chain: {}, contract: {}, updated: {}".format(
                         chain, each['contract'], updating
@@ -716,13 +716,16 @@ class MoralisAPI(commands.Cog):
             saved_image = 0
             gateway_list = self.bot.config['ipfs_gateway']['public']
             for each in get_list_no_images:
-                if len(gateway_list) <= 1:
+                if len(gateway_list) <= 2:
                     gateway_list = self.bot.config['ipfs_gateway']['public']
                 selected_gw = random.choice(gateway_list)
                 url =  selected_gw + each['image'].replace("ipfs://", "")
+                if self.bot.config['ipfs_gateway']['use_local_node'] == 1:
+                    url = self.bot.config['ipfs_gateway']['local_node'] + each['image'].replace("ipfs://", "")
                 try:
                     if each['image'].startswith("ipfs://"):
                         try:
+                            # print("Downloading image {}".format(each['image']))
                             async with aiohttp.ClientSession() as session:
                                 async with session.get(
                                     url,
@@ -765,7 +768,7 @@ class MoralisAPI(commands.Cog):
                                                 mime_type, hex_dig + "." + extension, each['image']
                                             )
                                             saved_image += 1
-                                            if saved_image > 0 and saved_image % 10 == 0:
+                                            if saved_image > 0 and saved_image % 5 == 0:
                                                 print("Fetched images: {}/{}".format(
                                                     saved_image, len(get_list_no_images)
                                                 ))
