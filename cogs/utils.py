@@ -16,6 +16,27 @@ from eth_utils import is_hex_address # Check hex only
 from web3 import Web3
 from web3.middleware import geth_poa_middleware
 
+# https://stackoverflow.com/questions/287871/how-do-i-print-colored-text-to-the-terminal
+
+def print_color(prt, color: str):
+    if color == "red":
+        print(f"\033[91m{prt}\033[00m")
+    elif color == "green":
+        print(f"\033[92m{prt}\033[00m")
+    elif color == "yellow":
+        print(f"\033[93m{prt}\033[00m")
+    elif color == "lightpurple":
+        print(f"\033[94m{prt}\033[00m")
+    elif color == "purple":
+        print(f"\033[95m{prt}\033[00m")
+    elif color == "cyan":
+        print(f"\033[96m{prt}\033[00m")
+    elif color == "lightgray":
+        print(f"\033[97m{prt}\033[00m")
+    elif color == "black":
+        print(f"\033[98m{prt}\033[00m")
+    else:
+        print(f"\033[0m{prt}\033[00m")
 
 def truncate(number, digits) -> float:
     stepper = Decimal(pow(10.0, digits))
@@ -1425,6 +1446,7 @@ class Utils(commands.Cog):
                 async with conn.cursor() as cur:
                     sql = """ SELECT *
                     FROM `nft_cont_tracking` WHERE `is_enable`=1
+                    ORDER BY `nft_cont_tracking` DESC
                     """
                     await cur.execute(sql)
                     result = await cur.fetchall()
@@ -1548,7 +1570,8 @@ class Utils(commands.Cog):
                         INNER JOIN `nft_cont_tracking` ON `nft_cont_tracking`.`nft_cont_tracking`=`nft_cont_meta`.`nft_cont_tracking_id`
                     WHERE `nft_cont_tracking`.`is_enable`=1 AND `nft_cont_tracking`.`need_update_meta`=1
                         AND (`nft_cont_meta`.`last_token_uri_sync` IS NULL OR `nft_cont_meta`.`last_metadata_sync` IS NULL
-                            OR `nft_cont_meta`.`token_uri` IS NULL)
+                            OR `nft_cont_meta`.`token_uri` IS NULL 
+                            OR (`nft_cont_meta`.`token_uri` IS NOT NULL AND `nft_cont_meta`.`metadata` IS NULL))
                     """
                     await cur.execute(sql)
                     result = await cur.fetchall()

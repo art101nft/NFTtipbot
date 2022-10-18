@@ -9,12 +9,15 @@ import random
 import io
 import magic
 from PIL import Image
+import copy
+
 import hashlib
 
 import aiohttp
 from discord.ext import commands, tasks
 
 from cogs.utils import Utils
+from cogs.utils import print_color
 
 
 # Cog class
@@ -35,12 +38,15 @@ class MoralisAPI(commands.Cog):
                     headers={'Content-Type': 'application/json', 'X-API-Key': self.bot.config['api']['moralis']}, 
                     timeout=timeout
                 ) as response:
-                    if response.status == 200:
+                    if response.status == 202:
                         return True
-                    elif response.status == 429:
-                        await asyncio.sleep(30.0)
+                    else:
+                        print_color('Failed to push_resync_meta chain {}, contract {}, token id: {}. Got status {}'.format(
+                            chain, contract, token_id_int, response.status), color="red"
+                        )
+                        await asyncio.sleep(1.0)
         except asyncio.TimeoutError:
-            print('TIMEOUT: push_resync_meta chain {}, contract {}, token id: {}'.format(chain, contract, token_id_int))
+            print_color('TIMEOUT: push_resync_meta chain {}, contract {}, token id: {}'.format(chain, contract, token_id_int), color="red")
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
         return False
@@ -92,7 +98,7 @@ class MoralisAPI(commands.Cog):
         return None
 
     async def pull_nft_contract_meta(
-        self, chain: str, contract: str, token_id_int: int, retry: int=5, timeout: int=45
+        self, chain: str, contract: str, token_id_int: int, retry: int=3, timeout: int=45
     ):
         try:
             retrying = 0
@@ -110,11 +116,36 @@ class MoralisAPI(commands.Cog):
                         decoded_data = json.loads(res_data)
                         if decoded_data and 'metadata' in decoded_data and decoded_data['metadata']:
                             return decoded_data
+                        elif decoded_data and 'metadata' in decoded_data and decoded_data['metadata'] is None and decoded_data['token_uri']:
+                            try:
+                                async with aiohttp.ClientSession() as session:
+                                    async with session.get(
+                                        decoded_data['token_uri'],
+                                        headers={'Content-Type': 'application/json'}, 
+                                        timeout=16
+                                    ) as response:
+                                        if response.status == 200:
+                                            res_data = await response.read()
+                                            res_data = res_data.decode('utf-8')
+                                            await session.close()
+                                            get_meta = json.loads(res_data)
+                                            decoded_data['metadata'] = res_data
+                                            decoded_data['last_metadata_sync'] = datetime.utcfromtimestamp(int(time.time())).strftime('%Y-%m-%dT%H:%M:%S.000Z')
+                                            return decoded_data
+                            except Exception as e:
+                                traceback.print_exc(file=sys.stdout)
+                        elif decoded_data and 'metadata' in decoded_data and decoded_data['metadata'] is None and decoded_data['token_uri'] is None:
+                            try:
+                                print_color("pull_nft_contract_meta chain: {}, contract: {} token id: {} got token_uri+metadata None. Push updated..".format(
+                                    chain, contract, token_id_int, 16), color="yellow"
+                                )
+                                await self.push_resync_meta(chain, contract, token_id_int, 8)
+                            except Exception as e:
+                                traceback.print_exc(file=sys.stdout)
                     else:
-                        # print("pull_nft_contract_transfers chain {}, contract {} got status {}".format(chain, contract, response.status))
                         retrying += 1
                         while retrying < retry:
-                            await asyncio.sleep(10.0)
+                            await asyncio.sleep(15.0)
                             async with aiohttp.ClientSession() as session:
                                 async with session.get(
                                     url,
@@ -130,6 +161,9 @@ class MoralisAPI(commands.Cog):
                                             return decoded_data
                                     else:
                                         retrying += 1
+                        print_color("pull_nft_contract_meta chain {}, contract {}, token id {} got status {}. re-tried {}".format(
+                            chain, contract, token_id_int, response.status, retrying), color="yellow"
+                        )
         except asyncio.TimeoutError:
             print('TIMEOUT: pull_nft_contract_meta chain {}, contract {}, token id {}'.format(chain, contract, token_id_int))
         except Exception as e:
@@ -401,19 +435,33 @@ class MoralisAPI(commands.Cog):
                         existing_saved_token_ids = []
                         if len(get_saved_meta_ids) > 0:
                             existing_saved_token_ids = [int(each['token_id_hex'], 16) for each in get_saved_meta_ids]
+                            remaining = len(get_token_ids) - len(existing_saved_token_ids)
+                            original_remaining = remaining
                             for token_id_each in get_token_ids:
                                 try:
                                     if int(token_id_each['token_id_hex'], 16) not in existing_saved_token_ids:
                                         if len(get_saved_meta_ids) > 0:
                                             # Just to print what additional data to get?
-                                            print("pulling fetch chain: {}, contract: {}, token id: {}".format(
-                                                chain, each['contract'], int(token_id_each['token_id_hex'], 16)
-                                            ))
+                                            print_color("pulling fetch chain: {}, contract: {}, token id: {} | remaining: {}/{}".format(
+                                                chain, each['contract'], int(token_id_each['token_id_hex'], 16), remaining, original_remaining),
+                                                color="cyan"
+                                            )
                                         fetch_each_meta = await self.pull_nft_contract_meta(
-                                            chain, each['contract'], int(token_id_each['token_id_hex'], 16), 5, 45
+                                            chain, each['contract'], int(token_id_each['token_id_hex'], 16), 3, 20
                                         )
-                                        await asyncio.sleep(0.1)
-                                        if fetch_each_meta:
+                                        if fetch_each_meta is None:
+                                            continue
+                                        elif fetch_each_meta and fetch_each_meta['token_uri'] is None:
+                                            try:
+                                                print("fetch_each_meta chain: {}, contract: {} token id: {} got token_uri None. Push updated..".format(
+                                                    chain, each['contract'], int(each['token_id_hex'], 16)
+                                                ))
+                                                await self.push_resync_meta(chain, each['contract'], int(each['token_id_hex'], 16), 8)
+                                            except Exception as e:
+                                                traceback.print_exc(file=sys.stdout)
+                                            continue
+                                        elif fetch_each_meta and fetch_each_meta['token_uri']:
+                                            remaining -= 1
                                             last_token_uri_sync_time=None
                                             if fetch_each_meta['last_token_uri_sync']:
                                                 last_token_uri_sync_time=datetime.strptime(
@@ -487,18 +535,18 @@ class MoralisAPI(commands.Cog):
                                 total_page = math.ceil(get_new_nft_tx['total'] / 100)
                                 cursor = get_new_nft_tx['cursor']
                                 for i in range(1, total_page):
-                                    # print("Cursor + {} / Contract: {}, chain: {}".format(i, each['contract'], chain))
+                                    print_color("Fetching transfer cursor + {} / Contract: {}, chain: {}".format(i, each['contract'], chain), color="yellow")
                                     try:
                                         get_new_nft_tx = await self.pull_nft_contract_transfers(chain, each['contract'], cursor, 45)
                                         if get_new_nft_tx is None:
-                                            print("Nft Got none for chain: {}, contract: {} at cursor={} ".format(chain, each['contract'], cursor))
+                                            print_color("Fetching transfer NFT got none for chain: {}, contract: {} at cursor={} ".format(chain, each['contract'], cursor), color="red")
                                             break
                                         cursor = get_new_nft_tx['cursor']
                                         if get_new_nft_tx and len(get_new_nft_tx['result']) > 0:
                                             having_data_rows = having_data_rows + get_new_nft_tx['result']
-                                            print("Chain: {}, contract {}, total: {} vs having {} - up timestamp {}".format(
+                                            print_color("Fetching transfer chain: {}, contract {}, total: {} vs having {} - up timestamp {}".format(
                                                 chain, each['contract'], got_total_nft, len(having_data_rows), get_new_nft_tx['result'][-1]['block_timestamp']
-                                            ))
+                                            ), color="red")
                                     except Exception as e:
                                         traceback.print_exc(file=sys.stdout)
                                         break
@@ -547,7 +595,7 @@ class MoralisAPI(commands.Cog):
                             each['transaction_hash'].lower(), each['token_id_int'], each['from_address'].lower(), 
                             each['to_address'].lower()) for each in get_existing_contract_tx
                         ]
-                        await asyncio.sleep(time_sleep)
+                        await asyncio.sleep(time_sleep/2)
                         if get_new_nft_tx and len(get_new_nft_tx['result']) > 0:
                             data_rows = []
                             for item in get_new_nft_tx['result']:
@@ -579,6 +627,8 @@ class MoralisAPI(commands.Cog):
         meta_updates = []
         if len(get_unsync_list) > 0:
             failed_push_resync_meta = 0
+            gateway_list = copy.copy(self.bot.config['ipfs_gateway']['public'])
+            remaining = len(get_unsync_list)
             for each in get_unsync_list:
                 try:
                     if each['network'] == "POLYGON":
@@ -586,19 +636,34 @@ class MoralisAPI(commands.Cog):
                     elif each['network'] == "ETHEREUM":
                         chain = "eth"
 
+                    print_color("Fetching meta chain: {}, contract: {}, token id: {}".format(
+                        chain, each['contract'], int(each['token_id_hex'], 16)
+                        ),
+                        color="yellow"
+                    )
+
                     if each['token_uri']:
                         # has URI but no meta, fetch Meta
                         try:
+                            selected_gw = None
                             token_uri_url = each['token_uri']
-                            if token_uri_url.startswith("https://ipfs.moralis.io:2053/ipfs/"):
-                                token_uri_url = random.choice(self.bot.config['ipfs_gateway']['public']) + \
-                                    token_uri_url.replace("https://ipfs.moralis.io:2053/ipfs/", "")
+                            if len(gateway_list) <= 2:
+                                gateway_list = copy.copy(self.bot.config['ipfs_gateway']['public'])
+                            try:
+                                selected_gw = random.choice(gateway_list)
+                            except IndexError:
+                                gateway_list = copy.copy(self.bot.config['ipfs_gateway']['public'])
+                                selected_gw = random.choice(gateway_list)
+
+                            if token_uri_url.startswith("https://ipfs.moralis.io:2053/ipfs/") and selected_gw:
+                               token_uri_url = selected_gw + \
+                                   token_uri_url.replace("https://ipfs.moralis.io:2053/ipfs/", "")
 
                             async with aiohttp.ClientSession() as session:
                                 async with session.get(
                                     token_uri_url,
                                     headers={'Content-Type': 'application/json'}, 
-                                    timeout=16
+                                    timeout=32
                                 ) as response:
                                     if response.status == 200:
                                         res_data = await response.read()
@@ -620,8 +685,14 @@ class MoralisAPI(commands.Cog):
                                         ))
                         except aiohttp.client_exceptions.InvalidURL:
                             print("Fetch invalid token_uri url: {}".format(each['token_uri']))
+                            continue
                         except asyncio.exceptions.TimeoutError:
-                            print("Fetch token_uri timeout for url: {}".format(each['token_uri']))
+                            print_color(
+                                "Fetch token_uri timeout for url: {}=>{}".format(each['token_uri'], token_uri_url),
+                                color="red"
+                            )
+                            gateway_list.remove(selected_gw)
+                            continue
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)
                     elif each['token_uri'] is None:
@@ -698,34 +769,47 @@ class MoralisAPI(commands.Cog):
                     traceback.print_exc(file=sys.stdout)
                 if len(meta_updates) > 0 and len(meta_updates) % 5 == 0:
                     updating = await self.utils.update_nft_tracking_meta(meta_updates)
-                    print("Updated meta chain: {}, contract: {}, updated: {}".format(
-                        chain, each['contract'], updating
-                    ))
+                    remaining -= updating
+                    print_color("Updated meta chain: {}, contract: {}, updated: {}/{}".format(
+                        chain, each['contract'], updating, remaining
+                        ),
+                        color="green"
+                    )
                     meta_updates = []
 
             if len(meta_updates) > 0:
                 updating = await self.utils.update_nft_tracking_meta(meta_updates)
-                print("Updated meta chain: {}, contract: {}, updated: {}".format(
-                    chain, each['contract'], updating
-                ))
+                remaining -= updating
+                print_color("Updated meta chain: {}, contract: {}, updated: {}/{}".format(
+                    chain, each['contract'], updating, remaining),
+                    color="green"
+                )
 
     @tasks.loop(seconds=60.0)
     async def fetch_image_in_nft_cont_meta(self):
         get_list_no_images = await self.utils.get_nft_contract_meta_list_no_image()
         if len(get_list_no_images) > 0:
             saved_image = 0
-            gateway_list = self.bot.config['ipfs_gateway']['public']
+            gateway_list = copy.copy(self.bot.config['ipfs_gateway']['public'])
+            completed_downloaded = 1
             for each in get_list_no_images:
-                if len(gateway_list) <= 2:
-                    gateway_list = self.bot.config['ipfs_gateway']['public']
-                selected_gw = random.choice(gateway_list)
-                url =  selected_gw + each['image'].replace("ipfs://", "")
-                if self.bot.config['ipfs_gateway']['use_local_node'] == 1:
-                    url = self.bot.config['ipfs_gateway']['local_node'] + each['image'].replace("ipfs://", "")
                 try:
+                    if self.bot.config['ipfs_gateway']['use_local_node'] == 1:
+                        url = self.bot.config['ipfs_gateway']['local_node'] + each['image'].replace("ipfs://", "")
+                    else:
+                        if len(gateway_list) <= 2:
+                            gateway_list = copy.copy(self.bot.config['ipfs_gateway']['public'])
+                        try:
+                            selected_gw = random.choice(gateway_list)
+                        except IndexError:
+                            gateway_list = copy.copy(self.bot.config['ipfs_gateway']['public'])
+                            selected_gw = random.choice(gateway_list)
+                        url =  selected_gw + each['image'].replace("ipfs://", "")
                     if each['image'].startswith("ipfs://"):
                         try:
-                            # print("Downloading image {}".format(each['image']))
+                            print_color("Fetching image: [{}/{}] {}=>{}".format(
+                                completed_downloaded, len(get_list_no_images), each['image'], url), color="yellow"
+                            )
                             async with aiohttp.ClientSession() as session:
                                 async with session.get(
                                     url,
@@ -761,31 +845,45 @@ class MoralisAPI(commands.Cog):
                                                 file.write(data)
                                                 file.close()
                                                 file_saved = True
+                                        elif extension == "mp4":
+                                            with open(
+                                                self.bot.config['ipfs_gateway']['local_path'] + hex_dig + "." + extension, "wb"
+                                            ) as file:
+                                                file.write(data)
+                                                file.close()
+                                                file_saved = True
                                         else:
-                                            print("Extension {} is not supported yet for {}.".format(extension, each['image']))
+                                            print_color("Fetched image extension {} is not supported yet for {}.".format(
+                                                extension, each['image'], color="red")
+                                            )
                                         if file_saved is True:
+                                            completed_downloaded += 1
                                             await self.utils.update_nft_tracking_meta_image(
                                                 mime_type, hex_dig + "." + extension, each['image']
                                             )
                                             saved_image += 1
                                             if saved_image > 0 and saved_image % 5 == 0:
-                                                print("Fetched images: {}/{}".format(
-                                                    saved_image, len(get_list_no_images)
-                                                ))
+                                                print_color("Fetched images: {}/{}".format(
+                                                    saved_image, len(get_list_no_images)), color="green"
+                                                )
                                     else:
                                         await asyncio.sleep(1.0)
+                                        if self.bot.config['ipfs_gateway']['use_local_node'] != 1:
+                                            gateway_list.remove(selected_gw)
+                                        print_color("Fetching image url: {} got response: {}".format(url, response.status), color="yellow")
                         except aiohttp.client_exceptions.InvalidURL:
-                            print("Fetch invalid image url: {}".format(url))
+                            print_color("Fetching invalid image url: {}".format(url), color="yellow")
                         except asyncio.exceptions.TimeoutError:
-                            print("Fetch image timeout for url: {}".format(url))
-                            gateway_list.remove(selected_gw)
+                            print_color("Fetching image timeout for url: {}".format(url), color="yellow")
+                            if self.bot.config['ipfs_gateway']['use_local_node'] != 1:
+                                gateway_list.remove(selected_gw)
                         except Exception as e:
                             traceback.print_exc(file=sys.stdout)                                    
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)
-                    print("Fetched image failed with: {}=> {}".format(
-                        each['image'], url
-                    ))
+                    print_color("Fetched image failed with: {}=> {}".format(
+                        each['image'], url), color="red"
+                    )
 
     @tasks.loop(seconds=60.0)
     async def wallet_eth(self):
