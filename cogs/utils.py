@@ -1442,7 +1442,7 @@ class Utils(commands.Cog):
     # End of store messge
 
     # NFT Meta fetch
-    async def get_active_nft_conts(self):
+    async def get_active_nft_conts(self, limit: int=10):
         try:
             await self.openConnection()
             async with self.pool.acquire() as conn:
@@ -1450,10 +1450,10 @@ class Utils(commands.Cog):
                     sql = """ SELECT *
                     FROM `nft_cont_tracking` 
                     WHERE `is_enable`=1
-                    ORDER BY `nft_cont_tracking_id`
-                    DESC
+                    ORDER BY `last_fetched_time` ASC
+                    LIMIT %s
                     """
-                    await cur.execute(sql,)
+                    await cur.execute(sql, limit)
                     result = await cur.fetchall()
                     if result:
                         return result
@@ -1461,16 +1461,33 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return []
 
-    async def get_active_nft_cont_tokens(self, nft_cont_tracking_id: int):
+    async def get_count_nft_cont_tokens(self, nft_cont_tracking_id: int):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT COUNT(*) AS numb
+                    FROM `nft_tokens` WHERE `nft_cont_tracking_id`=%s
+                    """
+                    await cur.execute(sql, nft_cont_tracking_id)
+                    result = await cur.fetchone()
+                    if result:
+                        return result['numb']
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+
+    async def get_active_nft_cont_tokens(self, nft_cont_tracking_id: int, limit: int):
         try:
             await self.openConnection()
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     sql = """ SELECT *
-                    FROM `nft_tokens` 
-                    WHERE `nft_cont_tracking_id`=%s
+                    FROM `nft_tokens` WHERE `nft_cont_tracking_id`=%s
+                    ORDER BY `nft_token_id` DESC
+                    LIMIT %s
                     """
-                    await cur.execute(sql, nft_cont_tracking_id)
+                    await cur.execute(sql, (nft_cont_tracking_id, limit))
                     result = await cur.fetchall()
                     if result:
                         return result
@@ -1494,25 +1511,48 @@ class Utils(commands.Cog):
                         await cur.executemany(sql, list_nft_ids)
                         tx_inserted = cur.rowcount
                         if tx_inserted > 0:
-                            sql = """ UPDATE `nft_cont_tracking` SET `last_token_id_hex`=%s
+                            sql = """ UPDATE `nft_cont_tracking` SET `last_token_id_hex`=%s, `last_fetched_time`=%s
                             WHERE `nft_cont_tracking_id`=%s
                             """
-                            await cur.execute(sql, (last_token_id_hex, nft_cont_tracking_id))
+                            await cur.execute(sql, (last_token_id_hex, int(time.time()), nft_cont_tracking_id))
+                        else:
+                            sql = """ UPDATE `nft_cont_tracking` SET `last_fetched_time`=%s
+                            WHERE `nft_cont_tracking_id`=%s
+                            """
+                            await cur.execute(sql, (int(time.time()), nft_cont_tracking_id))
                         return tx_inserted
         except Exception:
             traceback.print_exc(file=sys.stdout)
         return 0
 
-    async def get_nft_token_list_no_image(self, limit: int):
+    async def update_contract_fetched_time(
+        self, nft_cont_tracking_id
+    ):
         try:
             await self.openConnection()
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
+                    sql = """ UPDATE `nft_cont_tracking` SET `last_fetched_time`=%s
+                    WHERE `nft_cont_tracking_id`=%s
+                    """
+                    await cur.execute(sql, (int(time.time()), nft_cont_tracking_id))
+                    return True
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return False
+
+    async def get_nft_token_list_no_image(self, from_number: int=200, limit: int=32):
+        try:
+            if limit > from_number:
+                limit = from_number
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
                     # GROUP BY `image` made slow
-                    sql = """ SELECT DISTINCT(`image`), `title`, `nft_token_id` FROM `nft_tokens`
+                    sql = """ 
+                    SELECT * FROM `nft_tokens` AS t1 JOIN (SELECT DISTINCT(`image`), `title`, `nft_token_id` FROM `nft_tokens`
                     WHERE `image_null`=0 AND `local_stored_as_null`=1
-                    ORDER BY `nft_token_id` ASC 
-                    LIMIT %s
+                    LIMIT 200) AS t2 ON t1.`nft_token_id`=t2.`nft_token_id` ORDER BY RAND() LIMIT %s
                     """
                     await cur.execute(sql, limit)
                     result = await cur.fetchall()

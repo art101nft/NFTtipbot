@@ -213,7 +213,7 @@ class AlchemyAPI(commands.Cog):
                 f"{datetime.now():%Y-%m-%d %H:%M:%S}"), color="red")
             await asyncio.sleep(10.0)
             return
-        get_active = await self.utils.get_active_nft_conts()
+        get_active = await self.utils.get_active_nft_conts(limit=20)
         if len(get_active) > 0:
             for each in get_active:
                 if each['enable_fetching'] != 1:
@@ -225,15 +225,24 @@ class AlchemyAPI(commands.Cog):
                     chain = "polygon"
                 try:
                     # check if there is last token ID in records else from empty
-                    get_existing_tokens = await self.utils.get_active_nft_cont_tokens(each['nft_cont_tracking_id'])
+                    get_existing_tokens = []
+                    nft_counts = 0
+                    if each['supplying'] > 0:
+                        nft_counts = await self.utils.get_count_nft_cont_tokens(each['nft_cont_tracking_id'])
+                        # get last 200
+                        limit = 200
+                        if limit > each['supplying']:
+                            limit = each['supplying']
+                        get_existing_tokens = await self.utils.get_active_nft_cont_tokens(each['nft_cont_tracking_id'], limit)
                     collections = []
                     next_token = None
                     next_token_hex = None
-                    if len(get_existing_tokens) > 0:
-                        if each['max_items'] > 0 and len(get_existing_tokens) >= each['max_items']:
-                            print_color("{} Skip NFT tokens chain: {}, contract: {}, having {} item(s) already!".format(
-                               f"{datetime.now():%Y-%m-%d %H:%M:%S}", chain.lower(), each['contract'], len(get_existing_tokens)), color="green"
+                    if nft_counts > 0:
+                        if each['max_items'] > 0 and nft_counts >= each['max_items']:
+                            print_color("{} Skip NFT tokens chain: {}, contract: {}, having supplying = max!".format(
+                               f"{datetime.now():%Y-%m-%d %H:%M:%S}", chain.lower(), each['contract']), color="green"
                             )
+                            await self.utils.update_contract_fetched_time(each['nft_cont_tracking_id'])
                             continue
                         # has data, we need to exclude them if in result
                         next_token = int(get_existing_tokens[-1]['token_id_hex'], 16)
@@ -241,6 +250,7 @@ class AlchemyAPI(commands.Cog):
                         if each['last_token_id_hex']:
                             next_token_hex = each['last_token_id_hex']
 
+                    
                     # Let's collect
                     nft_collections = await self.get_nft_collections(
                         chain, each['contract'], next_token_hex, 1, 32
@@ -314,6 +324,8 @@ class AlchemyAPI(commands.Cog):
                             f"{datetime.now():%Y-%m-%d %H:%M:%S}", chain.lower(), each['contract'], inserting), color="green"
                         )
                     else:
+                        # we only update fetched time
+                        await self.utils.update_contract_fetched_time(each['nft_cont_tracking_id'])
                         print_color("{} Inserting NFT tokens chain: {}, contract: {}, 0 item(s)".format(
                             f"{datetime.now():%Y-%m-%d %H:%M:%S}", chain.lower(), each['contract']), color="red"
                         )
@@ -364,7 +376,7 @@ class AlchemyAPI(commands.Cog):
 
                 try:
                     #print_color("{}/{}) Fetching image: {}=>{}".format(
-                    #    id, total_numbers, image_dict['image'], url), color="yellow"
+                    #  id, total_numbers, image_dict['image'], url), color="yellow"
                     #)
                     async with aiohttp.ClientSession() as session:
                         async with session.get(
@@ -375,7 +387,7 @@ class AlchemyAPI(commands.Cog):
                                 data = await response.read()
                                 buffer = io.BytesIO(data)
                                 mime = magic.Magic(mime=True)
-                                mime_type = mime.from_buffer(buffer.read(1024))
+                                mime_type = mime.from_buffer(buffer.read(2048))
                                 # Example: > image/png
                                 extension = mime_type.split("/")[-1]
                                 hash_object = hashlib.sha256(data)
@@ -397,8 +409,8 @@ class AlchemyAPI(commands.Cog):
                                             file.close()
                                             file_saved = True
                                     else:
-                                        print_color("{}) Fetched extension {} is not supported yet for {}.".format(
-                                            id, extension, image_dict['image']), color="red"
+                                        print_color("{}) Fetched extension {} is not supported yet for {} from {}".format(
+                                            id, extension, image_dict['image'], url), color="red"
                                         )
                                 if file_saved is True:
                                     return (mime_type, hex_dig + "." + extension, image_dict['nft_token_id'])
@@ -410,9 +422,10 @@ class AlchemyAPI(commands.Cog):
                 except aiohttp.client_exceptions.InvalidURL:
                     print_color("{}) Fetching invalid image url: {}".format(id, url), color="yellow")
                 except asyncio.exceptions.TimeoutError:
-                    print_color("{}) Fetching image timeout for url: {}".format(id, url), color="yellow")
+                    # print_color("{}) Fetching image timeout for url: {}".format(id, url), color="yellow")
                     #if self.bot.config['ipfs_gateway']['use_local_node'] != 1 and selected_gw in gateway_list:
                     #    gateway_list.remove(selected_gw)
+                    pass
                 except Exception as e:
                     traceback.print_exc(file=sys.stdout)                                    
             except Exception as e:
@@ -424,7 +437,7 @@ class AlchemyAPI(commands.Cog):
 
         try:
             # Limit process
-            get_list_no_images = await self.utils.get_nft_token_list_no_image(limit=self.bot.config['ipfs_gateway']['num_proc_image_fetch'])
+            get_list_no_images = await self.utils.get_nft_token_list_no_image(from_number=200, limit=self.bot.config['ipfs_gateway']['num_proc_image_fetch'])
             if len(get_list_no_images) > 0:
                 gateway_list = copy.copy(self.bot.config['ipfs_gateway']['public'])
                 tasks = []
@@ -448,14 +461,13 @@ class AlchemyAPI(commands.Cog):
                         tasks.append(fetch_image_ipfs(each, i, len(get_list_no_images), selected_gw))
                         i += 1                        
                 inserting = 0
+                list_update_nft_tracking_meta_image = []
                 for task in asyncio.as_completed(tasks):
                     got_img = await task
-                    list_update_nft_tracking_meta_image = []
                     if type(got_img) is tuple:
                         list_update_nft_tracking_meta_image.append(got_img)
                     else:
                         continue
-
                 if len(list_update_nft_tracking_meta_image) > 0:
                     inserting = await self.utils.update_nft_tracking_meta_image(list_update_nft_tracking_meta_image)
                 print_color("Fetched image completed: {}->{} / {}".format(

@@ -75,6 +75,9 @@ class Admin(commands.Cog):
                             await interaction.edit_original_response(content="Contract type is not ERC1155 nor ERC721!")
                             return
                         elif check_cont and check_cont['contractMetadata']['tokenType'] in ["ERC1155", "ERC721"]:
+                            if 'name' not in check_cont['contractMetadata']:
+                                await interaction.edit_original_response(content="Couldn't fetch name, please add manually.")
+                                return
                             name = check_cont['contractMetadata']['name']
                             # Check if exist
                             get_cont = await self.utils.check_nft_cont(contract, network)
