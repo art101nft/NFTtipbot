@@ -28,6 +28,108 @@ class Admin(commands.Cog):
 
     @app_commands.check(owner_only)
     @app_commands.command(
+        name='addcollection',
+        description="Add collection from fetched library to assets"
+    )
+    async def slash_addcollection(
+        self, interaction: discord.Interaction,
+        contract: str,
+        network: str
+    ) -> None:
+        """ /addcollection <contract> <network>"""
+        network = network.upper()
+        contract = contract.lower()
+        await interaction.response.send_message(f"{interaction.user.mention} loading link...", ephemeral=True)
+        if interaction.user.id not in self.bot.config['discord']['owner_ids']:
+            await interaction.edit_original_response(content="Permission denied!!")
+            return
+        else:
+            try:
+                get_collection = await self.utils.check_nft_cont(contract, network)
+                if get_collection:
+                    # Check if all images are fetched.
+                    fetched_nfts = await self.utils.get_count_nft_cont_tokens(get_collection['nft_cont_tracking_id'])
+                    if get_collection['supplying'] == 0:
+                        await interaction.edit_original_response(
+                            content="There is no supplying fetched for `{}` yet!".format(
+                                get_collection['contract']
+                            )
+                        )
+                        return
+                    if fetched_nfts != get_collection['supplying']:
+                        await interaction.edit_original_response(
+                            content="Supplying is different from image fetches (supplying={} vs fetched={})!".format(
+                                get_collection['supplying'], fetched_nfts
+                            )
+                        )
+                    else:
+                        # Make a copy to asset list
+                        # Add to table `nft_info_contract` but put `is_enable`=0 and `enable_rarity`=0. If contract exist, skip insert
+                        # Edit name and other information manually
+                        get_contract = await self.utils.get_contract_by_contract_network(get_collection['contract'], get_collection['network'])
+                        # List all fetched assets
+                        get_list_images = await self.utils.get_nft_cont_tokens_with_images(get_collection['nft_cont_tracking_id'])
+                        if len(get_list_images) < get_collection['supplying']:
+                            await interaction.edit_original_response(
+                                content="Supplying is different from image fetches (supplying={} vs fetched={})!".format(
+                                    get_collection['supplying'], len(get_list_images)
+                                )
+                            )
+                            return
+                        token_type = get_list_images[0]['token_type']
+                        if get_contract is None:
+                            await self.utils.insert_nft_info_contract(
+                                get_collection['contract'], get_collection['network'], token_type
+                            )
+                        # 
+                        data_rows = []
+                        failed_data = False
+                        for item in get_list_images:
+                            title = None
+                            if item['title'] is None or (item['title'] and len(item['title']) == 0):
+                                # Use 
+                                title = json.loads(item['contractMetadata'])['name'] + " #" + str(int(item['token_id_hex'], 16))
+                            elif item['title'] and len(item['title']) > 0:
+                                title = item['title']
+                            if title is None:
+                                failed_data = True
+                                break
+                            else:
+                                item_hex = item['token_id_hex']
+                                item_int = int(item['token_id_hex'], 16) if int(item['token_id_hex'], 16) < 10**20-1 else None
+                                data_rows.append((
+                                    title, get_collection['contract'], get_collection['network'], item_int, item_hex,
+                                    item['metadata'], item['local_stored_as']
+                                ))
+                        if failed_data is True:
+                            await interaction.edit_original_response(
+                                content="Got None in title or name for contract `{}`!".format(
+                                    get_collection['contract']
+                                )
+                            )
+                            return
+                        else:
+                            # Insert items
+                            if len(data_rows) > 0:
+                                inserting = await self.utils.insert_nft_tokens_approved_list(data_rows)
+                                await interaction.edit_original_response(
+                                    content="Inserting {} for contract `{}` / `{}`!".format(
+                                        inserting, get_collection['contract'], get_collection['network']
+                                    )
+                                )
+                            else:
+                                await interaction.edit_original_response(
+                                    content="Got 0 records to insert for contract `{}`!".format(
+                                        get_collection['contract']
+                                    )
+                                )
+                else:
+                    await interaction.edit_original_response(content=f"Couldn't find contract {contract} with network {network} in our DB!")
+            except Exception as e:
+                traceback.print_exc(file=sys.stdout)
+
+    @app_commands.check(owner_only)
+    @app_commands.command(
         name='addopensea',
         description="Add Contract by OpenSea or other to tokenBot"
     )

@@ -579,21 +579,6 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return False
 
-    async def get_list_contract_assets(self):
-        try:
-            await self.openConnection()
-            async with self.pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    sql = """ SELECT * FROM `nft_item_list`
-                    """
-                    await cur.execute(sql)
-                    result = await cur.fetchall()
-                    if result:
-                        return result
-        except Exception:
-            traceback.print_exc(file=sys.stdout)
-        return []
-
     async def get_list_contract_collection_search(
             self, like: str, limit: int = 20
     ):
@@ -612,37 +597,26 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return []
 
-    async def get_contract_asset_by_token_id(
-            self, contract: str, token_id_hex: str, network: str
-    ):
+    async def get_list_contracts(self, all: bool=False):
         try:
             await self.openConnection()
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
-                    sql = """ SELECT * FROM `nft_item_list`
-                    WHERE `contract`=%s AND `asset_id_hex`=%s AND `network`=%s
-                    LIMIT 1
-                    """
-                    await cur.execute(sql, (contract, token_id_hex, network))
-                    result = await cur.fetchone()
-                    if result:
-                        return result
-        except Exception:
-            traceback.print_exc(file=sys.stdout)
-        return None
-
-    async def get_list_contracts(self):
-        try:
-            await self.openConnection()
-            async with self.pool.acquire() as conn:
-                async with conn.cursor() as cur:
-                    sql = """ SELECT * FROM `nft_info_contract` 
-                    WHERE `is_enable`=%s
-                    """
-                    await cur.execute(sql, 1)
-                    result = await cur.fetchall()
-                    if result:
-                        return result
+                    if all is False:
+                        sql = """ SELECT * FROM `nft_info_contract` 
+                        WHERE `is_enable`=%s
+                        """
+                        await cur.execute(sql, 1)
+                        result = await cur.fetchall()
+                        if result:
+                            return result
+                    else:
+                        sql = """ SELECT * FROM `nft_info_contract` 
+                        """
+                        await cur.execute(sql,)
+                        result = await cur.fetchall()
+                        if result:
+                            return result
         except Exception:
             traceback.print_exc(file=sys.stdout)
         return []
@@ -664,6 +638,42 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return None
 
+    async def get_contract_by_contract_network(self, contract: str, network: str):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT * FROM `nft_info_contract` 
+                    WHERE `contract`=%s AND `network`=%s 
+                    LIMIT 1
+                    """
+                    await cur.execute(sql, (contract, network))
+                    result = await cur.fetchone()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return None
+
+    async def insert_nft_info_contract(self, contract: str, network: str, token_type: str):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """
+                    INSERT INTO `nft_info_contract` (`collection_name`, `alias_name`, `desc`, 
+                    `contract_height`, `contract`, `contract_type`, `network`)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """
+                    await cur.execute(sql, (
+                        "PLACEHOLDER", "PLACEHOLDER", "PLACEHOLDER", 0, contract.lower(), token_type, network.upper()
+                    ))
+                    await conn.commit()
+                    return True
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return False
+                    
     async def get_list_user_assets(
             self, user_id: str, user_server: str
     ):
@@ -675,11 +685,11 @@ class Utils(commands.Cog):
                     sql = """ 
                         SELECT `nft_credit`.`nft_id`, `nft_credit`.`token_id_int`, `nft_credit`.`token_id_hex`, 
                         `nft_credit`.`credited_user_id`, `nft_credit`.`credited_user_server`, 
-                        `nft_info_contract`.*, `nft_item_list`.*
+                        `nft_info_contract`.*, `nft_tokens_approved_list`.*
                         FROM ((`nft_credit`
                         INNER JOIN `nft_info_contract` ON `nft_credit`.`token_address` = `nft_info_contract`.`contract`)
-                        INNER JOIN `nft_item_list` ON `nft_credit`.`token_id_hex` = `nft_item_list`.`asset_id_hex` 
-                            AND  `nft_credit`.`token_address` = `nft_item_list`.`contract`)
+                        INNER JOIN `nft_tokens_approved_list` ON `nft_credit`.`token_id_hex` = `nft_tokens_approved_list`.`asset_id_hex` 
+                            AND  `nft_credit`.`token_address` = `nft_tokens_approved_list`.`contract`)
                         WHERE `nft_credit`.`credited_user_id`=%s AND `nft_credit`.`credited_user_server`=%s
                         AND `nft_credit`.`is_frozen`=%s AND `nft_credit`.`amount`>0 
                             AND `nft_info_contract`.`is_enable`=1
@@ -718,15 +728,15 @@ class Utils(commands.Cog):
                     sql = """ 
                         SELECT `nft_credit`.`nft_id`, `nft_credit`.`token_id_int`, `nft_credit`.`token_id_hex`, 
                             `nft_credit`.`credited_user_id`, `nft_credit`.`credited_user_server`, 
-                            `nft_info_contract`.*, `nft_item_list`.*
+                            `nft_info_contract`.*, `nft_tokens_approved_list`.*
                         FROM ((`nft_credit`
                         INNER JOIN `nft_info_contract` ON `nft_credit`.`token_address` = `nft_info_contract`.`contract`)
-                        INNER JOIN `nft_item_list` ON `nft_credit`.`token_id_hex` = `nft_item_list`.`asset_id_hex` 
-                            AND  `nft_credit`.`token_address` = `nft_item_list`.`contract`)
+                        INNER JOIN `nft_tokens_approved_list` ON `nft_credit`.`token_id_hex` = `nft_tokens_approved_list`.`asset_id_hex` 
+                            AND  `nft_credit`.`token_address` = `nft_tokens_approved_list`.`contract`)
                         WHERE `nft_credit`.`credited_user_id`=%s AND `nft_credit`.`credited_user_server`=%s
                         AND `nft_credit`.`is_frozen`=%s AND `nft_credit`.`amount`>0 
                             AND `nft_info_contract`.`is_enable`=1
-                            AND `nft_item_list`.`name` LIKE %s LIMIT """+str(limit)
+                            AND `nft_tokens_approved_list`.`name` LIKE %s LIMIT """+str(limit)
                     await cur.execute(sql, (user_id, user_server, 0, "%" + like + "%"))
                     result_721 = await cur.fetchall()
                     if result_721:
@@ -958,11 +968,11 @@ class Utils(commands.Cog):
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     sql = """ 
-                    SELECT `metamask_v1`.*, `nft_main_wallet_nft_tx`.*, `nft_item_list`.`name`, `nft_item_list`.`contract`, `nft_item_list`.`asset_id_hex`
+                    SELECT `metamask_v1`.*, `nft_main_wallet_nft_tx`.*, `nft_tokens_approved_list`.`name`, `nft_tokens_approved_list`.`contract`, `nft_tokens_approved_list`.`asset_id_hex`
                         FROM ((`metamask_v1`
                         INNER JOIN `nft_main_wallet_nft_tx` ON `metamask_v1`.`address` = `nft_main_wallet_nft_tx`.`from_address`)
                         INNER JOIN `tbl_users` ON `metamask_v1`.`discord_id` = `tbl_users`.`user_id`
-                        INNER JOIN `nft_item_list` ON `nft_main_wallet_nft_tx`.`token_address` = `nft_item_list`.`contract` AND `nft_item_list`.`asset_id_hex`=`nft_main_wallet_nft_tx`.`token_id_hex`
+                        INNER JOIN `nft_tokens_approved_list` ON `nft_main_wallet_nft_tx`.`token_address` = `nft_tokens_approved_list`.`contract` AND `nft_tokens_approved_list`.`asset_id_hex`=`nft_main_wallet_nft_tx`.`token_id_hex`
                         )
                         WHERE `tbl_users`.`is_frozen`=0 AND `metamask_v1`.`is_signed`=1 AND `nft_main_wallet_nft_tx`.`inserted_credited`=0
                     """
@@ -1294,7 +1304,7 @@ class Utils(commands.Cog):
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     sql = """ SELECT *
-                    FROM `nft_item_list` WHERE `contract`=%s
+                    FROM `nft_tokens_approved_list` WHERE `contract`=%s
                     """
                     await cur.execute(sql, contract)
                     result = await cur.fetchall()
@@ -1358,11 +1368,11 @@ class Utils(commands.Cog):
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     sql = """ 
-                    SELECT `nft_rarity_items`.*, `nft_info_contract`.*, `nft_item_list`.`thumb_url`, `nft_item_list`.`meta`
+                    SELECT `nft_rarity_items`.*, `nft_info_contract`.*, `nft_tokens_approved_list`.`local_stored_as`, `nft_tokens_approved_list`.`metadata`
                     FROM ((`nft_rarity_items`
                     INNER JOIN `nft_info_contract` ON `nft_rarity_items`.`nft_info_contract_id` = `nft_info_contract`.`contract_id`)
-                    INNER JOIN `nft_item_list` ON `nft_rarity_items`.`nft_item_list_id` = `nft_item_list`.`item_id`)
-                    WHERE `nft_info_contract`.`is_enable`=1 AND `nft_info_contract`.`enable_rarity`=1 AND `nft_item_list`.`item_id`=%s
+                    INNER JOIN `nft_tokens_approved_list` ON `nft_rarity_items`.`nft_item_list_id` = `nft_tokens_approved_list`.`item_id`)
+                    WHERE `nft_info_contract`.`is_enable`=1 AND `nft_info_contract`.`enable_rarity`=1 AND `nft_tokens_approved_list`.`item_id`=%s
                     """
                     await cur.execute(sql, nft_item_list_id)
                     result = await cur.fetchone()
@@ -1378,11 +1388,11 @@ class Utils(commands.Cog):
             async with self.pool.acquire() as conn:
                 async with conn.cursor() as cur:
                     sql = """ 
-                    SELECT `nft_rarity_items`.*, `nft_info_contract`.*, `nft_item_list`.`thumb_url`, `nft_item_list`.`meta`
+                    SELECT `nft_rarity_items`.*, `nft_info_contract`.*, `nft_tokens_approved_list`.`local_stored_as`, `nft_tokens_approved_list`.`metadata`
                     FROM ((`nft_rarity_items`
                     INNER JOIN `nft_info_contract` ON `nft_rarity_items`.`nft_info_contract_id` = `nft_info_contract`.`contract_id`)
-                    INNER JOIN `nft_item_list` ON `nft_rarity_items`.`nft_item_list_id` = `nft_item_list`.`item_id`)
-                    WHERE `nft_info_contract`.`is_enable`=1 AND `nft_info_contract`.`enable_rarity`=1 AND `nft_item_list`.`name`=%s
+                    INNER JOIN `nft_tokens_approved_list` ON `nft_rarity_items`.`nft_item_list_id` = `nft_tokens_approved_list`.`item_id`)
+                    WHERE `nft_info_contract`.`is_enable`=1 AND `nft_info_contract`.`enable_rarity`=1 AND `nft_tokens_approved_list`.`name`=%s
                     """
                     await cur.execute(sql, nft_item_list_name)
                     result = await cur.fetchone()
@@ -1401,8 +1411,8 @@ class Utils(commands.Cog):
                     SELECT `nft_rarity_items`.*, `nft_info_contract`.*
                     FROM ((`nft_rarity_items`
                     INNER JOIN `nft_info_contract` ON `nft_rarity_items`.`nft_info_contract_id` = `nft_info_contract`.`contract_id`)
-                    INNER JOIN `nft_item_list` ON `nft_rarity_items`.`nft_item_list_id` = `nft_item_list`.`item_id`)
-                    WHERE `nft_info_contract`.`is_enable`=1 AND `nft_info_contract`.`enable_rarity`=1 AND `nft_item_list`.`name` LIKE %s LIMIT """+str(limit)
+                    INNER JOIN `nft_tokens_approved_list` ON `nft_rarity_items`.`nft_item_list_id` = `nft_tokens_approved_list`.`item_id`)
+                    WHERE `nft_info_contract`.`is_enable`=1 AND `nft_info_contract`.`enable_rarity`=1 AND `nft_tokens_approved_list`.`name` LIKE %s LIMIT """+str(limit)
                     await cur.execute(sql, "%" + like + "%")
                     result = await cur.fetchall()
                     if result:
@@ -1477,7 +1487,40 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return 0
 
-    async def get_active_nft_cont_tokens(self, nft_cont_tracking_id: int, limit: int):
+    async def get_nft_cont_tokens_with_images(self, nft_cont_tracking_id: int):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT *
+                    FROM `nft_tokens` WHERE `nft_cont_tracking_id`=%s 
+                        AND `local_stored_as_null`=%s
+                    """
+                    await cur.execute(sql, (nft_cont_tracking_id, 0))
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+    
+    async def insert_nft_tokens_approved_list(self, list_assets):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ INSERT INTO `nft_tokens_approved_list` (`name`, `contract`, 
+                    `network`, `asset_id`, `asset_id_hex`, `metadata`, `local_stored_as`) 
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    """
+                    await cur.executemany(sql, list_assets)
+                    await conn.commit()
+                    return cur.rowcount
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+
+    async def get_active_nft_cont_tokens(self, nft_cont_tracking_id: int, limit: int=None):
         try:
             await self.openConnection()
             async with self.pool.acquire() as conn:
@@ -1485,9 +1528,12 @@ class Utils(commands.Cog):
                     sql = """ SELECT *
                     FROM `nft_tokens` WHERE `nft_cont_tracking_id`=%s
                     ORDER BY `nft_token_id` DESC
-                    LIMIT %s
                     """
-                    await cur.execute(sql, (nft_cont_tracking_id, limit))
+                    if limit:
+                        sql += """ LIMIT %s """
+                        await cur.execute(sql, (nft_cont_tracking_id, limit))
+                    else:
+                        await cur.execute(sql, (nft_cont_tracking_id))
                     result = await cur.fetchall()
                     if result:
                         return result
@@ -1507,6 +1553,8 @@ class Utils(commands.Cog):
                         `token_id_int`, `token_id_hex`, `token_type`, `title`, `tokenUri`, `media`,
                         `metadata`, `timeLastUpdated`, `timeLastUpdated_int`, `contractMetadata`) 
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                            ON DUPLICATE KEY
+                                UPDATE `timeLastUpdated_int`=UNIX_TIMESTAMP()
                         """
                         await cur.executemany(sql, list_nft_ids)
                         tx_inserted = cur.rowcount
@@ -1551,10 +1599,29 @@ class Utils(commands.Cog):
                     # GROUP BY `image` made slow
                     sql = """ 
                     SELECT * FROM `nft_tokens` AS t1 JOIN (SELECT DISTINCT(`image`), `title`, `nft_token_id` FROM `nft_tokens`
-                    WHERE `image_null`=0 AND `local_stored_as_null`=1
+                    WHERE (`image_null`=0 OR `animation_null`=0) AND `local_stored_as_null`=1
                     LIMIT 200) AS t2 ON t1.`nft_token_id`=t2.`nft_token_id` ORDER BY RAND() LIMIT %s
                     """
                     await cur.execute(sql, limit)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def get_nft_token_list_no_image_on_demand(self, nft_cont_tracking_id: int, limit: int=10):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    # GROUP BY `image` made slow
+                    sql = """ 
+                    SELECT * FROM `nft_tokens`
+                    WHERE `nft_cont_tracking_id`=%s AND (`image_null`=0 OR `animation_null`=0) AND `local_stored_as_null`=1
+                    LIMIT %s
+                    """
+                    await cur.execute(sql, (nft_cont_tracking_id, limit))
                     result = await cur.fetchall()
                     if result:
                         return result
@@ -1597,6 +1664,23 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return None
 
+    async def get_nft_cont_fetch_on_demand(self):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT *
+                    FROM `nft_cont_tracking` 
+                    WHERE `is_enable`=%s AND `fetch_on_demand`=%s
+                    """
+                    await cur.execute(sql, (1, 1))
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
     async def insert_new_nft_cont(self, contract: str, network: str, name: str):
         try:
             await self.openConnection()
@@ -1612,6 +1696,68 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return None
     # End of NFT Meta fetch
+
+    # Empty image and Uri refetch
+    async def get_empty_image_token_uri(self, limit: int=10):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT * FROM 
+                    (SELECT * FROM `nft_tokens` 
+                        WHERE (`nft_tokens`.`image_null`=1 AND `nft_tokens`.`animation_null`=1 
+                           AND `nft_tokens`.`invalid_tokenUri`=0 AND `nft_tokens`.`local_stored_as_null`=1)
+                    ORDER BY `nft_tokens`.`nft_token_id` ASC LIMIT %s) AS x 
+                    JOIN `nft_cont_tracking` ON `nft_cont_tracking`.`nft_cont_tracking_id`= x.`nft_cont_tracking_id`
+                        AND `nft_cont_tracking`.`enable_fetching`=1;
+                    """
+                    await cur.execute(sql, limit)
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
+    async def update_binary_token_uri(self, records):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ UPDATE `nft_tokens` SET `mimetype`=%s, `local_stored_as`=%s
+                    WHERE `nft_token_id`=%s
+                    """
+                    await cur.executemany(sql, records)
+                    await conn.commit()
+                    updated_records = cur.rowcount
+                    return updated_records
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+
+    async def update_empty_token_uri(self, records, error_rows):
+        try:
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ UPDATE `nft_tokens` SET `title`=%s, `tokenUri`=%s, `media`=%s, `metadata`=%s, 
+                    `contractMetadata`=%s, `timeLastUpdated`=%s, `timeLastUpdated_int`=%s
+                    WHERE `nft_token_id`=%s
+                    """
+                    await cur.executemany(sql, records)
+                    await conn.commit()
+                    updated_records = cur.rowcount
+                    if len(error_rows) > 0:
+                        sql = """ UPDATE `nft_tokens` SET `invalid_tokenUri`=1
+                        WHERE `nft_token_id`=%s
+                        """
+                        await cur.executemany(sql, error_rows)
+                        await conn.commit()
+                    return updated_records
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return 0
+    # End of empty image and Uri refetch
 
     @commands.Cog.listener()
     async def on_ready(self):

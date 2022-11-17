@@ -51,11 +51,7 @@ class Collection(commands.Cog):
                             description=each['desc'][:1000],
                             timestamp=datetime.now())
                         try:
-                            image_url = json.loads(each['meta'])['image']
-                            if image_url.startswith("ipfs://"):
-                                image_url = image_url.replace("ipfs://", "https://gateway.moralisipfs.com/ipfs/")
-                            elif image_url.startswith("https://ipfs.io/ipfs/"):
-                                image_url = image_url.replace("https://ipfs.io/ipfs/", "https://gateway.moralisipfs.com/ipfs/")
+                            image_url = self.bot.config['ipfs_gateway']['ipfs_cache_local_hash'] + each['local_stored_as']
                             embed.set_image(url=image_url)
                             # print("{} - {}".format(each['name'], image_url))
                         except Exception:
@@ -146,11 +142,7 @@ class Collection(commands.Cog):
                 if missing_score > 0:
                     embed.add_field(name="Other traits", value="{}".format(missing_score), inline=False)
                 try:
-                    image_url = json.loads(get_nft['meta'])['image']
-                    if image_url.startswith("ipfs://"):
-                        image_url = image_url.replace("ipfs://", "https://gateway.moralisipfs.com/ipfs/")
-                    elif image_url.startswith("https://ipfs.io/ipfs/"):
-                        image_url = image_url.replace("https://ipfs.io/ipfs/", "https://gateway.moralisipfs.com/ipfs/")
+                    image_url = self.bot.config['ipfs_gateway']['ipfs_cache_local_hash'] + get_nft['local_stored_as']
                     embed.set_thumbnail(url=image_url)
                 except Exception:
                     traceback.print_exc(file=sys.stdout)
