@@ -494,6 +494,27 @@ class Utils(commands.Cog):
             traceback.print_exc(file=sys.stdout)
         return []
 
+    async def get_withdraw_tx_list_by_id_user_time(
+            self, user_id: str, user_server: str, network: str, time_int: int
+    ):
+        try:
+            lap_duration = int(time.time()) - time_int
+            await self.openConnection()
+            async with self.pool.acquire() as conn:
+                async with conn.cursor() as cur:
+                    sql = """ SELECT * FROM `nft_withdraw` 
+                    WHERE `user_id`=%s AND `user_server`=%s
+                    AND `network`=%s AND `withdrew_date`>%s
+                    ORDER BY `withdrew_date` ASC
+                    """
+                    await cur.execute(sql, (user_id, user_server, network, lap_duration))
+                    result = await cur.fetchall()
+                    if result:
+                        return result
+        except Exception:
+            traceback.print_exc(file=sys.stdout)
+        return []
+
     async def update_withdraw_pending_tx(
             self, withdraw_id: int, txn: str, status: str,
             effective_gas: int, gas_used: int, real_tx_fee: float,

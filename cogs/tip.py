@@ -31,9 +31,9 @@ class Tip(commands.Cog):
         """ /gastip <member> <amount> <ETH or MATIC> """
         await interaction.response.send_message(f"{interaction.user.mention} loading gas tip...")
 
-        if self.bot.config['wallet']['enable_gas_tip'] != 1:
+        if self.bot.config['wallet']['enable_gas_tip'] != 1 or self.bot.confog['wallet']['use_community_gas'] == 1:
             await interaction.edit_original_response(
-                content=f"{interaction.user.mention}, gas tip is currently disable."
+                content=f"{interaction.user.mention}, gas tip is currently disable or community gas is enable."
             )
             return
         amount = amount.replace(",", "")
