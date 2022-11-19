@@ -63,6 +63,11 @@ class About(commands.Cog):
                                      inline=False)
         except Exception:
             traceback.print_exc(file=sys.stdout)
+        botdetails.add_field(
+            name="Donate Gas?",
+            value=f"```diff\n- {self.bot.config['wallet']['eth_address']}```",
+            inline=False
+        )
         botdetails.add_field(name="Github", value=self.bot.config['other']['github_link'])
         botdetails.set_footer(text=f'Made in Python | requested by {requested_by}',
                               icon_url='http://findicons.com/files/icons/2804/plex/512/python.png')

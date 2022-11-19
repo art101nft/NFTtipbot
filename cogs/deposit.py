@@ -316,6 +316,11 @@ class Deposit(commands.Cog):
                         embed.add_field(name=k,
                                         value=", ".join(v),
                                         inline=False)
+                    embed.add_field(
+                        name="Donate Gas?",
+                        value=f"```diff\n- {self.bot.config['wallet']['eth_address']}```",
+                        inline=False
+                    )
                     await interaction.edit_original_response(content=None, embed=embed) # interaction.followup.send
                 except Exception:
                     traceback.print_exc(file=sys.stdout)
@@ -375,6 +380,11 @@ class Deposit(commands.Cog):
                     value="N/A (Please verify before deposit or you'll not credited!)",
                     inline=False
                 )
+            embed.add_field(
+                name="Donate Gas?",
+                value=f"```diff\n- {self.bot.config['wallet']['eth_address']}```",
+                inline=False
+            )
             # embed.add_field(
             #     name="Your Gas",
             #     value="`{:,.5f}` ETH / `{:,.5f}` MATIC".format(get_user_info['eth_gas'],
