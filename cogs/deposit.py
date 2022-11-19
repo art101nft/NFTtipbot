@@ -114,6 +114,23 @@ class Deposit(commands.Cog):
                             f"/ `{str(token_id)}`. Pending clearing his/her own previous Tx!"
                         )
                         return
+                    # Check if they withdrew more than limit
+                    history_withdraw = await self.utils.get_withdraw_tx_list_by_id_user_time(
+                        str(interaction.user.id), self.bot.server_bot, network, 24*3600
+                    )
+                    if len(history_withdraw) >= self.bot.config['wallet']['max_withdraw_per_day']:
+                        next_possible = history_withdraw[0]['withdrew_date'] + self.bot.config['wallet']['next_refresh']
+                        next_time_r = "<t:{}:R>".format(next_possible)
+                        next_time_f = "<t:{}:f>".format(next_possible)
+                        await interaction.edit_original_response(
+                            content=f"{interaction.user.mention}, you reached withdraw limit for network `{network}`. "
+                                    f"Please try again {next_time_r} ({next_time_f})!")
+                        await self.utils.log_to_channel(
+                            self.bot.config['discord']['log_channel'],
+                            f"Reject {str(interaction.user.id)} / {interaction.user.name} try to withdraw: `{item_name}` "
+                            f"/ `{str(token_id)}`. Rejected because of limit! Should try again {next_time_r} ({next_time_f})."
+                        )
+                        return
 
                     # check if nonce for withdraw address
                     pending_withdraw_tx_list = await self.utils.get_pending_withdraw_tx_list(network)
@@ -147,7 +164,8 @@ class Deposit(commands.Cog):
                                 content=f"{interaction.user.mention}, can't get network endpoint.")
                             return
 
-                        if your_gas < min_gas:
+                        # Check if use community gas or own gas
+                        if self.bot.config['wallet']['use_community_gas'] == 0 and your_gas < min_gas:
                             min_gas_str = "{:,.4f}".format(min_gas)
                             having_gas_str = "{:,.4f}".format(your_gas)
                             await interaction.edit_original_response(
@@ -298,6 +316,11 @@ class Deposit(commands.Cog):
                         embed.add_field(name=k,
                                         value=", ".join(v),
                                         inline=False)
+                    embed.add_field(
+                        name="Donate Gas?",
+                        value=f"```diff\n- {self.bot.config['wallet']['eth_address']}```",
+                        inline=False
+                    )
                     await interaction.edit_original_response(content=None, embed=embed) # interaction.followup.send
                 except Exception:
                     traceback.print_exc(file=sys.stdout)
@@ -340,26 +363,41 @@ class Deposit(commands.Cog):
                     address.append(each['address'])
                 address_list = address[0]
                 address_list = ", ".join(address)
-                embed.add_field(name="Only send from verified Address",
-                                value=f"```diff\n+ {address_list}```",
-                                inline=False)
-                embed.add_field(name="Only deposited to",
-                                value=f"```diff\n- {self.bot.config['wallet']['eth_address']}```",
-                                inline=False)
+                embed.add_field(
+                    name="Only send from verified Address",
+                    value=f"```diff\n+ {address_list}```",
+                    inline=False
+                )
+                embed.add_field(
+                    name="Only deposited to",
+                    value=f"```diff\n- {self.bot.config['wallet']['eth_address']}```",
+                    inline=False
+                )
             else:
                 embed.description = "Please use `/nftverify` to to verify your Discord and MetaMask."
-                embed.add_field(name="Verified Address",
-                                value="N/A (Please verify before deposit or you'll not credited!)",
-                                inline=False)
-            embed.add_field(name="Your Gas",
-                            value="`{:,.5f}` ETH / `{:,.5f}` MATIC".format(get_user_info['eth_gas'],
-                                                                           get_user_info['matic_gas']),
-                            inline=False)
+                embed.add_field(
+                    name="Verified Address",
+                    value="N/A (Please verify before deposit or you'll not credited!)",
+                    inline=False
+                )
+            embed.add_field(
+                name="Donate Gas?",
+                value=f"```diff\n- {self.bot.config['wallet']['eth_address']}```",
+                inline=False
+            )
+            # embed.add_field(
+            #     name="Your Gas",
+            #     value="`{:,.5f}` ETH / `{:,.5f}` MATIC".format(get_user_info['eth_gas'],
+            #                                                     get_user_info['matic_gas']),
+            #     inline=False
+            # )
             try:
                 await self.utils.get_bot_setting()
-                embed.add_field(name="Supported Networks",
-                                value=", ".join(self.bot.config['other']['supported_network']),
-                                inline=False)
+                embed.add_field(
+                    name="Supported Networks",
+                    value=", ".join(self.bot.config['other']['supported_network']),
+                    inline=False
+                )
                 try:
                     SLOW = "🐌"
                     NORMAL = "🚴"

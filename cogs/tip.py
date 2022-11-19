@@ -1,6 +1,8 @@
 import sys
 import traceback
 from typing import List
+import random
+from datetime import datetime
 
 import discord
 from discord import app_commands
@@ -29,9 +31,9 @@ class Tip(commands.Cog):
         """ /gastip <member> <amount> <ETH or MATIC> """
         await interaction.response.send_message(f"{interaction.user.mention} loading gas tip...")
 
-        if self.bot.config['wallet']['enable_gas_tip'] != 1:
+        if self.bot.config['wallet']['enable_gas_tip'] != 1 or self.bot.confog['wallet']['use_community_gas'] == 1:
             await interaction.edit_original_response(
-                content=f"{interaction.user.mention}, gas tip is currently disable."
+                content=f"{interaction.user.mention}, gas tip is currently disable or community gas is enable."
             )
             return
         amount = amount.replace(",", "")
@@ -259,6 +261,81 @@ class Tip(commands.Cog):
             app_commands.Choice(name=item, value=asset_ids[item_list.index(item)])
             for item in item_list if current.lower() in item.lower()
         ]
+
+    @app_commands.guild_only()
+    @app_commands.command(
+        name="pickuser",
+        description="Pick a user from who re-act on a message."
+    )
+    async def command_pickuser(
+        self,
+        interaction: discord.Interaction,
+        msg_id: str,
+        emoji_str: str,
+        channel: discord.TextChannel=None
+    ) -> None:
+        """ /pickuser <message ID> <emoji> """
+        await interaction.response.send_message(f"{interaction.user.mention} finding message...")    
+        try:
+            msg_id = int(msg_id)
+            try:
+                if channel is not None:
+                    _msg: discord.Message = await channel.fetch_message(msg_id)
+                else:
+                    _msg: discord.Message = await interaction.channel.fetch_message(msg_id)
+            except discord.errors.NotFound:
+                await interaction.edit_original_response(
+                    content=f"{interaction.user.mention}, message not found or wrong channel."
+                )
+                return
+
+            if _msg is None:
+                await interaction.edit_original_response(
+                    content=f"{interaction.user.mention}, I can't find that message `{str(msg_id)}`. Try again later or double check the ID."
+                )
+            else:
+                # check if that's his message
+                if _msg.author != interaction.user:
+                    await interaction.edit_original_response(
+                        content=f"{interaction.user.mention}, you can only do with your message. Try again!"
+                    )
+                    return
+                else:
+                    my_emoji = discord.PartialEmoji.from_str(emoji_str)
+                    if my_emoji is None:
+                        await interaction.edit_original_response(
+                            content=f"{interaction.user.mention}, I can't get emoji from string `{emoji_str}`!"
+                        )
+                        return
+
+                    attend_list = []
+                    if len(_msg.reactions) > 0:
+                        for each_r in _msg.reactions:
+                            print("{} vs {}".format(each_r, emoji_str))
+                            if str(each_r) == str(emoji_str):
+                                attend_list = [user async for user in each_r.users() if not user.bot and user != interaction.user]
+                            else:
+                                continue
+                        if len(attend_list) > 1:
+                            random.seed(datetime.now())
+                            picked_u = random.choice(attend_list)
+                            await interaction.edit_original_response(
+                                content=f"{interaction.user.mention}, there are total {str(len(attend_list))} users. A random selected {picked_u.mention} by {interaction.user.mention}."
+                            )
+                        else:
+                            await interaction.edit_original_response(
+                                content=f"{interaction.user.mention}, need more user to re-act on that mesage with {emoji_str}."
+                            )
+                    else:
+                        await interaction.edit_original_response(
+                            content=f"{interaction.user.mention}, I can't find anyone re-act with {emoji_str}."
+                        )
+        except ValueError:
+            await interaction.edit_original_response(
+                content=f"{interaction.user.mention}, invalid message ID."
+            )
+        except Exception as e:
+            traceback.print_exc(file=sys.stdout)
 
     async def cog_load(self) -> None:
         pass
